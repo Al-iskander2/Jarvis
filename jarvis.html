@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>JARVIS — OpenClaw Bridge</title>
+  <meta name="description" content="JARVIS: Voz + OpenClaw Bridge" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ══════════════════════════════════════════
+       DESIGN SYSTEM
+    ══════════════════════════════════════════ */
+    :root {
+      --bg: #03070c;
+      --bg-accent: #070e17;
+      --panel: rgba(10, 20, 35, 0.9);
+      --border: rgba(0, 212, 255, 0.15);
+      --cyan: #00d4ff;
+      --blue: #0d5ff8;
+      --orange: #ff7a00;
+      --red: #ff3b3b;
+      --green: #00ff9d;
+      --text: #e0f2ff;
+      --muted: #6a8ba0;
+      --font-hud: 'Rajdhani', sans-serif;
+      --font-body: 'Inter', sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+    }
+
+    /* ══════════════════════════════════════════
+       VERTICAL HUD LAYOUT
+    ══════════════════════════════════════════ */
+    #app {
+      width: 100%;
+      max-width: 480px;
+      height: 95vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      box-shadow: 0 0 40px rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(10px);
+    }
+
+    /* Background Grid */
+    #app::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: linear-gradient(rgba(0, 212, 255, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 212, 255, 0.04) 1px, transparent 1px);
+      background-size: 30px 30px;
+      pointer-events: none;
+      border-radius: 20px;
+    }
+
+    header {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 2;
+    }
+
+    .logo {
+      font-family: var(--font-hud);
+      font-weight: 700;
+      letter-spacing: 4px;
+      color: var(--cyan);
+      font-size: 20px;
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 4px 12px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      font-family: var(--font-hud);
+      font-size: 11px;
+      letter-spacing: 1px;
+    }
+
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+    .dot.ready { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .dot.busy { background: var(--orange); }
+
+    /* ══════════════════════════════════════════
+       CENTRAL AVATAR (CSS)
+    ══════════════════════════════════════════ */
+    .avatar-area {
+      flex: 0 0 300px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      z-index: 2;
+    }
+
+    .core-orb {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: radial-gradient(circle, var(--blue) 0%, transparent 70%);
+      border: 2px solid var(--cyan);
+      box-shadow: 0 0 30px var(--blue);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .core-orb::after {
+      content: '';
+      width: 80%;
+      height: 80%;
+      border-radius: 50%;
+      border: 1px dashed var(--cyan);
+      animation: spin 8s linear infinite;
+    }
+
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    /* Avatar States */
+    .avatar-area.listening .core-orb { transform: scale(1.1); box-shadow: 0 0 50px var(--orange); border-color: var(--orange); }
+    .avatar-area.thinking .core-orb { animation: pulse 1.5s infinite; filter: hue-rotate(45deg); }
+    .avatar-area.speaking .core-orb { transform: scale(1.05); box-shadow: 0 0 60px var(--cyan); }
+
+    @keyframes pulse { 0% { opacity: 0.8; } 50% { opacity: 1; transform: scale(1.05); } 100% { opacity: 0.8; } }
+
+    .status-text {
+      margin-top: 20px;
+      font-family: var(--font-hud);
+      font-size: 14px;
+      letter-spacing: 3px;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    /* ══════════════════════════════════════════
+       CHAT VIEW (Scrollable)
+    ══════════════════════════════════════════ */
+    #chat-log {
+      flex: 1;
+      overflow-y: auto;
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 2;
+      mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%);
+    }
+
+    .msg {
+      max-width: 85%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.4;
+      animation: slide-up 0.3s ease-out;
+    }
+
+    @keyframes slide-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    .msg.user { align-self: flex-end; background: var(--blue); color: white; border-bottom-right-radius: 2px; }
+    .msg.jarvis { align-self: flex-start; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border); border-bottom-left-radius: 2px; }
+
+    /* ══════════════════════════════════════════
+       CONTROLS
+    ══════════════════════════════════════════ */
+    .controls {
+      padding: 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      z-index: 2;
+    }
+
+    button {
+      padding: 10px 16px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.05);
+      color: white;
+      font-family: var(--font-hud);
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 13px;
+      letter-spacing: 1px;
+    }
+
+    button:hover { background: rgba(255, 255, 255, 0.1); border-color: var(--cyan); }
+    button.danger { border-color: rgba(255, 59, 59, 0.3); color: var(--red); }
+    button.danger:hover { background: rgba(255, 59, 59, 0.1); }
+
+    .mic-btn {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--blue), var(--cyan));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      box-shadow: 0 4px 15px rgba(13, 95, 248, 0.4);
+    }
+
+    .mic-btn.active { background: var(--red); box-shadow: 0 0 20px var(--red); animation: pulse-red 1s infinite; }
+    @keyframes pulse-red { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+
+    #abort-btn { display: none; margin-left: auto; }
+  </style>
+</head>
+
+<body>
+  <div id="app">
+    <header>
+      <div class="logo">JARVIS</div>
+      <div class="status-pill">
+        <div class="dot" id="status-dot"></div>
+        <span id="status-label">BOOTING</span>
+      </div>
+    </header>
+
+    <div class="avatar-area" id="avatar-area">
+      <div class="core-orb"></div>
+      <div class="status-text" id="status-text">DISPOSITIVO LISTO</div>
+    </div>
+
+    <div id="chat-log"></div>
+
+    <div class="controls">
+      <button class="mic-btn" id="mic-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="23"/>
+          <line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+      </button>
+      <button onclick="clearHistory()" class="danger">LIMPIAR</button>
+      <button id="abort-btn" onclick="abortResponse()" class="danger">DETENER</button>
+    </div>
+  </div>
+
+  <script>
+    const SESSION_ID = "voice-" + Math.random().toString(36).substring(2, 10);
+    let isRecording = false;
+    let currentAudio = null;
+
+    const UI = {
+      mic: document.getElementById('mic-btn'),
+      statusDot: document.getElementById('status-dot'),
+      statusLabel: document.getElementById('status-label'),
+      statusText: document.getElementById('status-text'),
+      avatar: document.getElementById('avatar-area'),
+      chat: document.getElementById('chat-log'),
+      abort: document.getElementById('abort-btn')
+    };
+
+    // ════════════════════════════════════════════
+    // Sync Session and State
+    // ════════════════════════════════════════════
+    async function syncState() {
+      try {
+        const r = await fetch(`/state?session_id=${SESSION_ID}`);
+        const data = await r.json();
+        UI.statusDot.className = "dot " + (data.ready ? 'ready' : 'busy');
+        UI.statusLabel.textContent = data.status || "WAIT";
+      } catch (e) {
+        console.warn("State sync failed", e);
+      }
+    }
+    setInterval(syncState, 5000);
+    syncState();
+
+    function setUIState(state) {
+      UI.avatar.className = "avatar-area " + state;
+      UI.statusText.textContent = state === 'idle' ? 'DISPOSITIVO LISTO' : state.toUpperCase();
+      UI.abort.style.display = (state === 'thinking' || state === 'speaking') ? 'block' : 'none';
+      if (state === 'listening') UI.mic.classList.add('active');
+      else UI.mic.classList.remove('active');
+    }
+
+    function addMessage(role, text) {
+      const div = document.createElement('div');
+      div.className = "msg " + role;
+      div.textContent = text;
+      UI.chat.appendChild(div);
+      UI.chat.scrollTop = UI.chat.scrollHeight;
+    }
+
+    // ════════════════════════════════════════════
+    // Actions
+    // ════════════════════════════════════════════
+    async function abortResponse() {
+        if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+        await fetch(`/abort/${SESSION_ID}`, { method: 'POST' });
+        setUIState('idle');
+    }
+
+    async function clearHistory() {
+        await fetch(`/clear/${SESSION_ID}`, { method: 'POST' });
+        UI.chat.innerHTML = '';
+        addMessage('jarvis', 'Memoria de sesión reiniciada.');
+    }
+
+    // ════════════════════════════════════════════
+    // Microfono
+    // ════════════════════════════════════════════
+    let mediaRecorder;
+    let audioChunks = [];
+
+    UI.mic.onclick = async () => {
+      if (!isRecording) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+        mediaRecorder.onstop = sendAudio;
+        mediaRecorder.start();
+        isRecording = true;
+        setUIState('listening');
+      } else {
+        mediaRecorder.stop();
+        isRecording = false;
+        setUIState('thinking');
+      }
+    };
+
+    async function sendAudio() {
+      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+      const formData = new FormData();
+      formData.append('audio', audioBlob);
+      formData.append('session_id', SESSION_ID);
+
+      try {
+        const r = await fetch('/voice', { method: 'POST', body: formData });
+        const res = await r.json();
+        if (res.ok) {
+          addMessage('user', res.transcript);
+          addMessage('jarvis', res.reply_text);
+          playAudio(res.audio_base64, res.audio_mime);
+        } else {
+          addMessage('jarvis', "⚠️ " + (res.error || "Error"));
+          setUIState('idle');
+        }
+      } catch (e) {
+          addMessage('jarvis', "⚠️ Error de red");
+          setUIState('idle');
+      }
+    }
+
+    function playAudio(b64, mime) {
+      if (currentAudio) currentAudio.pause();
+      currentAudio = new Audio(`data:${mime};base64,${b64}`);
+      setUIState('speaking');
+      currentAudio.onended = () => setUIState('idle');
+      currentAudio.play();
+    }
+  </script>
+</body>
+</html>
